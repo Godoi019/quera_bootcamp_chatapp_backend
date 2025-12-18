@@ -76,13 +76,14 @@ type SendMessageRequest struct {
 }
 
 type MessageResponse struct {
-	ID        int       `json:"id"`
-	Content   string    `json:"content"`
-	SenderID  int       `json:"sender_id"`
-	ChatID    int       `json:"chat_id"`
-	IsEdited  bool      `json:"is_edited"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        int          `json:"id"`
+	Content   string       `json:"content"`
+	SenderID  int          `json:"sender_id"`
+	ChatID    int          `json:"chat_id"`
+	IsEdited  bool         `json:"is_edited"`
+	CreatedAt time.Time    `json:"created_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
+	Sender    *UserProfile `json:"sender,omitempty"`
 }
 
 type UpdateMessageRequest struct {
