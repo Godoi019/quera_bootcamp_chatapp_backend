@@ -38,6 +38,7 @@ Thumbs.db
 # Air
 tmp/
 build-errors.log
+*.log
 
 # Database
 *.db
