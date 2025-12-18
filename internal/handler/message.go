@@ -5,21 +5,22 @@ import (
 
 	"github.com/Hossara/quera_bootcamp_chatapp_backend/internal/model"
 	"github.com/Hossara/quera_bootcamp_chatapp_backend/internal/repository/ent"
-	"github.com/Hossara/quera_bootcamp_chatapp_backend/internal/repository/ent/chat"
-	"github.com/Hossara/quera_bootcamp_chatapp_backend/internal/repository/ent/chatmember"
-	"github.com/Hossara/quera_bootcamp_chatapp_backend/internal/repository/ent/message"
-	"github.com/Hossara/quera_bootcamp_chatapp_backend/internal/repository/ent/user"
+	"github.com/Hossara/quera_bootcamp_chatapp_backend/internal/service"
 	f "github.com/Hossara/quera_bootcamp_chatapp_backend/pkg/fiber"
 	"github.com/Hossara/quera_bootcamp_chatapp_backend/pkg/utils"
 	"github.com/gofiber/fiber/v3"
 )
 
 type MessageHandler struct {
-	client *ent.Client
+	messageService *service.MessageService
+	chatService    *service.ChatService
 }
 
 func NewMessageHandler(client *ent.Client) *MessageHandler {
-	return &MessageHandler{client: client}
+	return &MessageHandler{
+		messageService: service.NewMessageService(client),
+		chatService:    service.NewChatService(client),
+	}
 }
 
 func (h *MessageHandler) SendMessage(c fiber.Ctx) error {
@@ -31,12 +32,7 @@ func (h *MessageHandler) SendMessage(c fiber.Ctx) error {
 	}
 
 	// Check if user is a member of the chat
-	isMember, err := h.client.ChatMember.Query().
-		Where(
-			chatmember.HasChatWith(chat.ID(req.ChatID)),
-			chatmember.HasUserWith(user.ID(userID)),
-		).
-		Exist(context.Background())
+	isMember, err := h.chatService.IsUserMemberOfChat(context.Background(), req.ChatID, userID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(model.ErrorResponse{
 			Error: "failed to check membership",
@@ -48,26 +44,30 @@ func (h *MessageHandler) SendMessage(c fiber.Ctx) error {
 		})
 	}
 
-	// Create message
-	msg, err := h.client.Message.Create().
-		SetContent(req.Content).
-		SetSenderID(userID).
-		SetChatID(req.ChatID).
-		Save(context.Background())
+	// Send message
+	newMessage, err := h.messageService.SendMessage(context.Background(), req.ChatID, userID, req.Content)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(model.ErrorResponse{
 			Error: "failed to send message",
 		})
 	}
 
+	senderID := userID
+	chatID := req.ChatID
+	if newMessage.Edges.Sender != nil {
+		senderID = newMessage.Edges.Sender.ID
+	}
+	if newMessage.Edges.Chat != nil {
+		chatID = newMessage.Edges.Chat.ID
+	}
+
 	return c.Status(fiber.StatusCreated).JSON(model.MessageResponse{
-		ID:        msg.ID,
-		Content:   msg.Content,
-		SenderID:  userID,
-		ChatID:    req.ChatID,
-		IsEdited:  msg.IsEdited,
-		CreatedAt: msg.CreatedAt,
-		UpdatedAt: msg.UpdatedAt,
+		ID:        newMessage.ID,
+		Content:   newMessage.Content,
+		SenderID:  senderID,
+		ChatID:    chatID,
+		CreatedAt: newMessage.CreatedAt,
+		UpdatedAt: newMessage.UpdatedAt,
 	})
 }
 
@@ -81,33 +81,25 @@ func (h *MessageHandler) GetMessage(c fiber.Ctx) error {
 	}
 
 	// Get message
-	msg, err := h.client.Message.Query().
-		Where(message.ID(messageID)).
-		WithChat().
-		WithSender().
-		Only(context.Background())
+	msg, err := h.messageService.GetMessageByID(context.Background(), messageID)
 	if err != nil {
-		if ent.IsNotFound(err) {
-			return c.Status(fiber.StatusNotFound).JSON(model.ErrorResponse{
-				Error: "message not found",
-			})
-		}
-		return c.Status(fiber.StatusInternalServerError).JSON(model.ErrorResponse{
-			Error: "failed to get message",
+		return c.Status(fiber.StatusNotFound).JSON(model.ErrorResponse{
+			Error: "message not found",
 		})
 	}
 
-	// Check if user is a member of the chat
+	// Get IDs from edges
+	senderID := 0
 	chatID := 0
+	if msg.Edges.Sender != nil {
+		senderID = msg.Edges.Sender.ID
+	}
 	if msg.Edges.Chat != nil {
 		chatID = msg.Edges.Chat.ID
 	}
-	isMember, err := h.client.ChatMember.Query().
-		Where(
-			chatmember.HasChatWith(chat.ID(chatID)),
-			chatmember.HasUserWith(user.ID(userID)),
-		).
-		Exist(context.Background())
+
+	// Check if user is a member of the chat
+	isMember, err := h.chatService.IsUserMemberOfChat(context.Background(), chatID, userID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(model.ErrorResponse{
 			Error: "failed to check membership",
@@ -119,20 +111,26 @@ func (h *MessageHandler) GetMessage(c fiber.Ctx) error {
 		})
 	}
 
-	senderID := 0
-	if msg.Edges.Sender != nil {
-		senderID = msg.Edges.Sender.ID
-	}
-
-	return c.JSON(model.MessageResponse{
+	response := model.MessageResponse{
 		ID:        msg.ID,
 		Content:   msg.Content,
 		SenderID:  senderID,
 		ChatID:    chatID,
-		IsEdited:  msg.IsEdited,
 		CreatedAt: msg.CreatedAt,
 		UpdatedAt: msg.UpdatedAt,
-	})
+	}
+
+	if msg.Edges.Sender != nil {
+		response.Sender = &model.UserProfile{
+			ID:          msg.Edges.Sender.ID,
+			Username:    msg.Edges.Sender.Username,
+			DisplayName: msg.Edges.Sender.DisplayName,
+			CreatedAt:   msg.Edges.Sender.CreatedAt,
+			LastSeen:    msg.Edges.Sender.LastSeen,
+		}
+	}
+
+	return c.JSON(response)
 }
 
 func (h *MessageHandler) ListMessages(c fiber.Ctx) error {
@@ -144,13 +142,11 @@ func (h *MessageHandler) ListMessages(c fiber.Ctx) error {
 		})
 	}
 
+	limit := utils.QueryInt(c, "limit", 50)
+	offset := utils.QueryInt(c, "offset", 0)
+
 	// Check if user is a member of the chat
-	isMember, err := h.client.ChatMember.Query().
-		Where(
-			chatmember.HasChatWith(chat.ID(chatID)),
-			chatmember.HasUserWith(user.ID(userID)),
-		).
-		Exist(context.Background())
+	isMember, err := h.chatService.IsUserMemberOfChat(context.Background(), chatID, userID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(model.ErrorResponse{
 			Error: "failed to check membership",
@@ -162,36 +158,47 @@ func (h *MessageHandler) ListMessages(c fiber.Ctx) error {
 		})
 	}
 
-	// Get messages
-	messages, err := h.client.Message.Query().
-		Where(message.HasChatWith(chat.ID(chatID))).
-		WithSender().
-		Order(ent.Asc(message.FieldCreatedAt)).
-		All(context.Background())
+	messages, err := h.messageService.ListChatMessages(context.Background(), chatID, limit, offset)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(model.ErrorResponse{
 			Error: "failed to list messages",
 		})
 	}
 
-	result := make([]model.MessageResponse, len(messages))
-	for i, msg := range messages {
+	messageResponses := make([]model.MessageResponse, 0, len(messages))
+	for _, msg := range messages {
 		senderID := 0
+		chatID := 0
 		if msg.Edges.Sender != nil {
 			senderID = msg.Edges.Sender.ID
 		}
-		result[i] = model.MessageResponse{
+		if msg.Edges.Chat != nil {
+			chatID = msg.Edges.Chat.ID
+		}
+
+		response := model.MessageResponse{
 			ID:        msg.ID,
 			Content:   msg.Content,
 			SenderID:  senderID,
 			ChatID:    chatID,
-			IsEdited:  msg.IsEdited,
 			CreatedAt: msg.CreatedAt,
 			UpdatedAt: msg.UpdatedAt,
 		}
+
+		if msg.Edges.Sender != nil {
+			response.Sender = &model.UserProfile{
+				ID:          msg.Edges.Sender.ID,
+				Username:    msg.Edges.Sender.Username,
+				DisplayName: msg.Edges.Sender.DisplayName,
+				CreatedAt:   msg.Edges.Sender.CreatedAt,
+				LastSeen:    msg.Edges.Sender.LastSeen,
+			}
+		}
+
+		messageResponses = append(messageResponses, response)
 	}
 
-	return c.JSON(result)
+	return c.JSON(messageResponses)
 }
 
 func (h *MessageHandler) UpdateMessage(c fiber.Ctx) error {
@@ -208,52 +215,46 @@ func (h *MessageHandler) UpdateMessage(c fiber.Ctx) error {
 		return f.RespondError(c, fiber.StatusBadRequest, err.Message, err.Errors)
 	}
 
-	// Get message
-	msg, err := h.client.Message.Get(context.Background(), messageID)
+	// Check if user is the sender
+	isSender, err := h.messageService.IsUserSenderOfMessage(context.Background(), messageID, userID)
 	if err != nil {
-		if ent.IsNotFound(err) {
-			return c.Status(fiber.StatusNotFound).JSON(model.ErrorResponse{
-				Error: "message not found",
-			})
-		}
 		return c.Status(fiber.StatusInternalServerError).JSON(model.ErrorResponse{
-			Error: "failed to get message",
+			Error: "failed to check message ownership",
 		})
 	}
-
-	// Check if user is the sender
-	sender, _ := msg.QuerySender().Only(context.Background())
-	if sender == nil || sender.ID != userID {
+	if !isSender {
 		return c.Status(fiber.StatusForbidden).JSON(model.ErrorResponse{
 			Error: "you can only edit your own messages",
 		})
 	}
 
 	// Update message
-	updatedMsg, err := h.client.Message.UpdateOneID(messageID).
-		SetContent(req.Content).
-		SetIsEdited(true).
-		Save(context.Background())
+	updatedMessage, err := h.messageService.UpdateMessage(context.Background(), messageID, req.Content)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(model.ErrorResponse{
 			Error: "failed to update message",
 		})
 	}
 
-	chatEntity, _ := updatedMsg.QueryChat().Only(context.Background())
+	// Reload with edges
+	updatedMessage, _ = h.messageService.GetMessageByID(context.Background(), messageID)
+
+	senderID := userID
 	chatID := 0
-	if chatEntity != nil {
-		chatID = chatEntity.ID
+	if updatedMessage.Edges.Sender != nil {
+		senderID = updatedMessage.Edges.Sender.ID
+	}
+	if updatedMessage.Edges.Chat != nil {
+		chatID = updatedMessage.Edges.Chat.ID
 	}
 
 	return c.JSON(model.MessageResponse{
-		ID:        updatedMsg.ID,
-		Content:   updatedMsg.Content,
-		SenderID:  userID,
+		ID:        updatedMessage.ID,
+		Content:   updatedMessage.Content,
+		SenderID:  senderID,
 		ChatID:    chatID,
-		IsEdited:  updatedMsg.IsEdited,
-		CreatedAt: updatedMsg.CreatedAt,
-		UpdatedAt: updatedMsg.UpdatedAt,
+		CreatedAt: updatedMessage.CreatedAt,
+		UpdatedAt: updatedMessage.UpdatedAt,
 	})
 }
 
@@ -266,29 +267,21 @@ func (h *MessageHandler) DeleteMessage(c fiber.Ctx) error {
 		})
 	}
 
-	// Get message
-	msg, err := h.client.Message.Get(context.Background(), messageID)
+	// Check if user is the sender
+	isSender, err := h.messageService.IsUserSenderOfMessage(context.Background(), messageID, userID)
 	if err != nil {
-		if ent.IsNotFound(err) {
-			return c.Status(fiber.StatusNotFound).JSON(model.ErrorResponse{
-				Error: "message not found",
-			})
-		}
 		return c.Status(fiber.StatusInternalServerError).JSON(model.ErrorResponse{
-			Error: "failed to get message",
+			Error: "failed to check message ownership",
 		})
 	}
-
-	// Check if user is the sender
-	sender, _ := msg.QuerySender().Only(context.Background())
-	if sender == nil || sender.ID != userID {
+	if !isSender {
 		return c.Status(fiber.StatusForbidden).JSON(model.ErrorResponse{
 			Error: "you can only delete your own messages",
 		})
 	}
 
 	// Delete message
-	err = h.client.Message.DeleteOneID(messageID).Exec(context.Background())
+	err = h.messageService.DeleteMessage(context.Background(), messageID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(model.ErrorResponse{
 			Error: "failed to delete message",
