@@ -49,7 +49,7 @@ A real-time chat application backend built with Go, Fiber v3, WebSocket, and Pos
 ├── docker-compose.yml   # PostgreSQL setup
 ├── Makefile            # Build commands
 ├── .air.toml           # Air hot reload config
-└── .env.example        # Environment variables template
+└── config.sample.yaml  # Config template
 ```
 
 ## Getting Started
@@ -61,10 +61,10 @@ git clone https://github.com/Hossara/quera_bootcamp_chatapp_backend.git
 cd quera_bootcamp_chatapp_backend
 ```
 
-### 2. Set up environment variables
+### 2. Set up config
 
 ```bash
-cp .env.example .env
+cp config.sample.yaml config.yaml
 # Edit .env if needed
 ```
 
@@ -277,21 +277,6 @@ make ent-new name=YourSchema
 ```bash
 make ent-generate
 ```
-
-## Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SERVER_PORT` | Server port | `3000` |
-| `SERVER_HOST` | Server host | `0.0.0.0` |
-| `DB_HOST` | Database host | `localhost` |
-| `DB_PORT` | Database port | `5432` |
-| `DB_USER` | Database user | `chatapp` |
-| `DB_PASSWORD` | Database password | `chatapp123` |
-| `DB_NAME` | Database name | `chatapp_db` |
-| `DB_SSLMODE` | Database SSL mode | `disable` |
-| `PASETO_KEY` | PASETO encryption key (32 bytes) | `12345678901234567890123456789012` |
-| `TOKEN_EXPIRATION` | Token expiration in hours | `24` |
 
 ## Testing
 
