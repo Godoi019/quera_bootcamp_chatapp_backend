@@ -3,9 +3,9 @@ testdata_dir = "testdata"
 tmp_dir = "tmp"
 
 [build]
-  args_bin = []
+  args_bin = ["server", "start", "--config", "."]
   bin = "./tmp/main"
-  cmd = "go build -o ./tmp/main ./cmd/server"
+  cmd = "go build -o ./tmp/main main.go"
   delay = 1000
   exclude_dir = ["assets", "tmp", "vendor", "testdata", "internal/repository/ent"]
   exclude_file = []

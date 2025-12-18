@@ -1,16 +1,19 @@
 .PHONY: help run build test clean docker-up docker-down migrate-up migrate-down ent-generate air-init dev
 
+# Configuration
+CONFIG_PATH ?= .
+
 help: ## Show this help message
 	@echo 'Usage: make [target]'
 	@echo ''
 	@echo 'Available targets:'
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
 
-run: ## Run the application
-	go run cmd/server/main.go
+run: ## Run the application (use CONFIG_PATH=path to specify config location)
+	go run main.go server start --config $(CONFIG_PATH)
 
 build: ## Build the application
-	go build -o bin/server cmd/server/main.go
+	go build -o bin/chatapp-server main.go
 
 test: ## Run tests
 	go test -v ./...
@@ -20,13 +23,13 @@ clean: ## Clean build artifacts
 	go clean
 
 docker-up: ## Start docker containers
-	docker-compose up -d
+	@docker compose up -d
 
 docker-down: ## Stop docker containers
-	docker-compose down
+	@docker compose down
 
 docker-logs: ## View docker logs
-	docker-compose logs -f
+	@docker compose logs -f
 
 ent-new: ## Create new ent schema (usage: make ent-new name=SchemaName)
 	go run -mod=mod entgo.io/ent/cmd/ent new --target internal/repository/schema $(name)
