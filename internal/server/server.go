@@ -11,6 +11,7 @@ import (
 	"github.com/Hossara/quera_bootcamp_chatapp_backend/internal/handler"
 	"github.com/Hossara/quera_bootcamp_chatapp_backend/internal/middleware"
 	"github.com/Hossara/quera_bootcamp_chatapp_backend/internal/repository/ent"
+	f "github.com/Hossara/quera_bootcamp_chatapp_backend/pkg/fiber"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/logger"
@@ -34,7 +35,7 @@ func New(cfg *config.Config, client *ent.Client) (*Server, error) {
 	app := fiber.New(fiber.Config{
 		AppName:      "Chat App Backend",
 		ServerHeader: "Fiber",
-		ErrorHandler: customErrorHandler,
+		ErrorHandler: f.CustomErrorHandler,
 	})
 
 	server := &Server{
