@@ -20,7 +20,7 @@ import (
 
 type WebSocketHandler struct {
 	client      *ent.Client
-	authService *auth.AuthService
+	authService *auth.Service
 	clients     map[int]*websocket.Conn // userID -> connection
 	clientsMu   sync.RWMutex
 	chatRooms   map[int]map[int]bool // chatID -> map[userID]bool
@@ -28,7 +28,7 @@ type WebSocketHandler struct {
 	upgrader    websocket.FastHTTPUpgrader
 }
 
-func NewWebSocketHandler(client *ent.Client, authService *auth.AuthService) *WebSocketHandler {
+func NewWebSocketHandler(client *ent.Client, authService *auth.Service) *WebSocketHandler {
 	return &WebSocketHandler{
 		client:      client,
 		authService: authService,

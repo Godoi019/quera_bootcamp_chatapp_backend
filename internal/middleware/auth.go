@@ -7,7 +7,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-func AuthMiddleware(authService *auth.AuthService) fiber.Handler {
+func AuthMiddleware(authService *auth.Service) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		authHeader := c.Get("Authorization")
 		if authHeader == "" {

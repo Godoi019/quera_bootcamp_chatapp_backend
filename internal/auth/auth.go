@@ -8,7 +8,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-type AuthService struct {
+type Service struct {
 	pasetoKey       []byte
 	tokenExpiration time.Duration
 }
@@ -20,14 +20,14 @@ type TokenPayload struct {
 	ExpireAt time.Time `json:"expire_at"`
 }
 
-func NewAuthService(pasetoKey string, expirationHours int) *AuthService {
-	return &AuthService{
+func NewAuthService(pasetoKey string, expirationHours int) *Service {
+	return &Service{
 		pasetoKey:       []byte(pasetoKey),
 		tokenExpiration: time.Duration(expirationHours) * time.Hour,
 	}
 }
 
-func (s *AuthService) HashPassword(password string) (string, error) {
+func (s *Service) HashPassword(password string) (string, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return "", fmt.Errorf("failed to hash password: %w", err)
@@ -35,11 +35,11 @@ func (s *AuthService) HashPassword(password string) (string, error) {
 	return string(hashedPassword), nil
 }
 
-func (s *AuthService) VerifyPassword(hashedPassword, password string) error {
+func (s *Service) VerifyPassword(hashedPassword, password string) error {
 	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
 }
 
-func (s *AuthService) CreateToken(userID int, username string) (string, error) {
+func (s *Service) CreateToken(userID int, username string) (string, error) {
 	now := time.Now()
 	payload := TokenPayload{
 		UserID:   userID,
@@ -57,7 +57,7 @@ func (s *AuthService) CreateToken(userID int, username string) (string, error) {
 	return token, nil
 }
 
-func (s *AuthService) VerifyToken(token string) (*TokenPayload, error) {
+func (s *Service) VerifyToken(token string) (*TokenPayload, error) {
 	v2 := paseto.NewV2()
 	var payload TokenPayload
 
