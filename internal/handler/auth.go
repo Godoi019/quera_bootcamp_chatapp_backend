@@ -9,6 +9,7 @@ import (
 	"github.com/Hossara/quera_bootcamp_chatapp_backend/internal/model"
 	"github.com/Hossara/quera_bootcamp_chatapp_backend/internal/repository/ent"
 	"github.com/Hossara/quera_bootcamp_chatapp_backend/internal/repository/ent/user"
+	f "github.com/Hossara/quera_bootcamp_chatapp_backend/pkg/fiber"
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -25,11 +26,9 @@ func NewAuthHandler(client *ent.Client, authService *auth.Service) *AuthHandler 
 }
 
 func (h *AuthHandler) Register(c fiber.Ctx) error {
-	var req model.RegisterRequest
-	if err := c.Bind().JSON(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(model.ErrorResponse{
-			Error: "invalid request body",
-		})
+	req := new(model.RegisterRequest)
+	if err := f.ParseRequestBody(c, req); err != nil {
+		return f.RespondError(c, fiber.StatusBadRequest, err.Message, err.Errors)
 	}
 
 	// Validate username
@@ -108,11 +107,9 @@ func (h *AuthHandler) Register(c fiber.Ctx) error {
 }
 
 func (h *AuthHandler) Login(c fiber.Ctx) error {
-	var req model.LoginRequest
-	if err := c.Bind().JSON(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(model.ErrorResponse{
-			Error: "invalid request body",
-		})
+	req := new(model.LoginRequest)
+	if err := f.ParseRequestBody(c, req); err != nil {
+		return f.RespondError(c, fiber.StatusBadRequest, err.Message, err.Errors)
 	}
 
 	// Find user
