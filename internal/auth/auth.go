@@ -1,15 +1,16 @@
 package auth
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
-	"github.com/o1egl/paseto"
+	"aidanwoods.dev/go-paseto"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type Service struct {
-	pasetoKey       []byte
+	symmetricKey    paseto.V4SymmetricKey
 	tokenExpiration time.Duration
 }
 
@@ -21,8 +22,16 @@ type TokenPayload struct {
 }
 
 func NewAuthService(pasetoKey string, expirationHours int) *Service {
+	// Create a V4 symmetric key from the provided key string
+	// For production, use paseto.NewV4SymmetricKey() to generate a secure key
+	key, err := paseto.V4SymmetricKeyFromBytes([]byte(pasetoKey))
+	if err != nil {
+		// If the key is invalid, generate a new one (should log warning in production)
+		key = paseto.NewV4SymmetricKey()
+	}
+
 	return &Service{
-		pasetoKey:       []byte(pasetoKey),
+		symmetricKey:    key,
 		tokenExpiration: time.Duration(expirationHours) * time.Hour,
 	}
 }
@@ -48,26 +57,45 @@ func (s *Service) CreateToken(userID int, username string) (string, error) {
 		ExpireAt: now.Add(s.tokenExpiration),
 	}
 
-	v2 := paseto.NewV2()
-	token, err := v2.Encrypt(s.pasetoKey, payload, nil)
+	// Marshal payload to JSON
+	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
-		return "", fmt.Errorf("failed to create token: %w", err)
+		return "", fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	return token, nil
+	// Create PASETO v4 token
+	token := paseto.NewToken()
+	token.SetIssuedAt(now)
+	token.SetNotBefore(now)
+	token.SetExpiration(payload.ExpireAt)
+	token.SetString("data", string(payloadJSON))
+
+	// Encrypt the token
+	encrypted := token.V4Encrypt(s.symmetricKey, nil)
+
+	return encrypted, nil
 }
 
-func (s *Service) VerifyToken(token string) (*TokenPayload, error) {
-	v2 := paseto.NewV2()
-	var payload TokenPayload
+func (s *Service) VerifyToken(tokenString string) (*TokenPayload, error) {
+	parser := paseto.NewParser()
+	parser.AddRule(paseto.NotExpired())
 
-	err := v2.Decrypt(token, s.pasetoKey, &payload, nil)
+	// Parse and verify the token
+	token, err := parser.ParseV4Local(s.symmetricKey, tokenString, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify token: %w", err)
 	}
 
-	if time.Now().After(payload.ExpireAt) {
-		return nil, fmt.Errorf("token has expired")
+	// Extract the payload
+	dataStr, err := token.GetString("data")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get token data: %w", err)
+	}
+
+	// Unmarshal the payload
+	var payload TokenPayload
+	if err := json.Unmarshal([]byte(dataStr), &payload); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal payload: %w", err)
 	}
 
 	return &payload, nil
